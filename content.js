@@ -21,6 +21,8 @@
 
   const DEFAULT_SETTINGS = { poolSize: 20, order: "random" };
   const VALID_ORDERS = ["random", "oldest", "newest"];
+  // Bump when the parsed bookmark shape changes so cached entries are re-fetched.
+  const SCHEMA_VERSION = 2;
 
   // Per-page-load UI state (not persisted).
   let sessionDismissed = false;
@@ -477,17 +479,39 @@
   async function maybeRefresh() {
     if (refreshInFlight || !isContextValid()) return;
     if (location.origin !== "https://x.com") return;
-    const { lastFetchedAt, creds } = await getLocal(["lastFetchedAt", "creds"]);
+    const { lastFetchedAt, creds, schemaVersion } = await getLocal([
+      "lastFetchedAt",
+      "creds",
+      "schemaVersion",
+    ]);
+    const needMigrate = schemaVersion !== SCHEMA_VERSION; // re-parse cache on upgrade
     let c = creds;
     if (!c || !c.queryId) {
       c = await scrapeCredsViaSW();
       if (!c || !c.queryId) return;
-    } else if (lastFetchedAt && Date.now() - Date.parse(lastFetchedAt) < REFRESH_INTERVAL_MS) {
+    } else if (
+      !needMigrate &&
+      lastFetchedAt &&
+      Date.now() - Date.parse(lastFetchedAt) < REFRESH_INTERVAL_MS
+    ) {
       return;
     }
     refreshInFlight = true;
     try {
+      if (needMigrate) {
+        // Older cached bookmarks were parsed before resolved links / new fields
+        // existed. Drop them (keep read/snooze state) so the fresh fetch repopulates
+        // with the current parser.
+        await setLocal({ bookmarkById: {}, order: [] });
+      }
       await activeRefresh(c);
+      await setLocal({ schemaVersion: SCHEMA_VERSION });
+      if (needMigrate) {
+        // Re-show a fresh card built from the re-parsed data.
+        shownThisLoad = false;
+        removeCard();
+        setTimeout(() => tick(), 50);
+      }
     } catch (e) {
       console.warn(LOG, "refresh failed", e);
     } finally {

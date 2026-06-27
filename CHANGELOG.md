@@ -1,5 +1,12 @@
 # Changelog
 
+## 2.1.2
+
+- **Fix:** link-only bookmarks still showed a bare `t.co` because cached bookmarks
+  parsed by older versions never re-fetched. Added a schema-version migration that
+  drops the stale-shape cache on upgrade and re-fetches with the current parser, so
+  article titles / resolved links now appear. Read/snooze state is preserved.
+
 ## 2.1.1
 
 - **Fix:** the bookmark card disappeared after navigating into a single tweet and
