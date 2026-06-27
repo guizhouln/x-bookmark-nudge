@@ -32,6 +32,8 @@
   let currentIdx = 0;
   let lastAction = null; // { bm, type } for Undo
   let toastTimer = null;
+  let viewMode = "card"; // "card" | "settings"
+  let currentSettings = DEFAULT_SETTINGS;
 
   // Teardown plumbing.
   let _observer = null;
@@ -599,6 +601,8 @@
       '<path d="M16.697 5.5c-1.222-.06-2.679.51-3.89 2.16l-.805 1.09-.806-1.09C9.984 6.01 8.526 5.44 7.304 5.5c-1.243.07-2.349.78-2.91 1.91-.552 1.12-.633 2.78.479 4.82 1.074 1.97 3.257 4.27 7.129 6.61 3.87-2.34 6.052-4.64 7.126-6.61 1.111-2.04 1.03-3.7.477-4.82-.561-1.13-1.666-1.84-2.908-1.91z"></path>',
     view:
       '<path d="M8.75 21V3h2v18h-2zM18 21V8.5h2V21h-2zM4 21l.004-10h2L6 21H4zm9.248 0v-7h2v7h-2z"></path>',
+    gear:
+      '<path d="M19.14 12.94c.04-.3.06-.61.06-.94 0-.32-.02-.64-.07-.94l2.03-1.58a.49.49 0 00.12-.61l-1.92-3.32a.49.49 0 00-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54a.48.48 0 00-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96a.49.49 0 00-.59.22L2.74 8.87a.49.49 0 00.12.61l2.03 1.58c-.05.3-.09.63-.09.94s.02.64.07.94l-2.03 1.58a.49.49 0 00-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32a.49.49 0 00-.12-.61l-2.01-1.58zM12 15.6c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6 3.6z"></path>',
   };
 
   function statSvg(path) {
@@ -620,6 +624,10 @@
         border-radius:999px; padding:4px 8px; font-size:16px; line-height:1; }
       .nav button:hover, .x:hover { background:${t.hover}; color:${ACCENT}; }
       .nav .pos { min-width:54px; text-align:center; font-variant-numeric:tabular-nums; font-size:13px; }
+      .gear { cursor:pointer; border:0; background:transparent; padding:4px; border-radius:999px; display:inline-flex; }
+      .gear svg { width:18px; height:18px; fill:${t.sub}; }
+      .gear:hover { background:${t.hover}; }
+      .gear:hover svg { fill:${ACCENT}; }
       .author { display:flex; align-items:center; gap:8px; margin-bottom:6px; }
       .avatar { width:36px; height:36px; border-radius:999px; flex:none; background:${t.border}; object-fit:cover; }
       .who { display:flex; flex-direction:column; line-height:1.2; min-width:0; }
@@ -702,6 +710,7 @@
           <span class="lbl">From your bookmarks</span>
           <span class="spacer"></span>
           ${navHtml}
+          <button class="gear" data-act="settings" title="设置 / Settings"><svg viewBox="0 0 24 24" aria-hidden="true">${ICONS.gear}</svg></button>
           <button class="x" data-act="dismiss" title="Hide for now">✕</button>
         </div>
         <div class="author">
@@ -722,6 +731,58 @@
       </div>`;
   }
 
+  function buildSettingsMarkup(settings, theme) {
+    const t = THEMES[theme] || THEMES.light;
+    const css = `
+      :host { all: initial; display: block; }
+      .wrap { font-family:${FONT}; background:${t.bg}; color:${t.text};
+        border-bottom:1px solid ${t.border}; padding:12px 16px 14px; box-sizing:border-box; }
+      .top { display:flex; align-items:center; gap:6px; margin-bottom:14px; }
+      .top .bk { width:17px; height:17px; fill:${ACCENT}; }
+      .top .lbl { color:${ACCENT}; font-weight:700; font-size:14px; }
+      .top .spacer { flex:1; }
+      .backbtn { cursor:pointer; border:0; background:transparent; color:${t.sub}; font-weight:700;
+        font-size:14px; padding:4px 10px; border-radius:999px; }
+      .backbtn:hover { background:${t.hover}; color:${ACCENT}; }
+      .grp { margin-bottom:14px; }
+      .grp-title { font-size:13px; color:${t.sub}; margin-bottom:7px; }
+      .seg { display:flex; gap:8px; flex-wrap:wrap; }
+      .opt { font-family:${FONT}; font-size:14px; font-weight:600; cursor:pointer; padding:7px 14px;
+        border-radius:999px; border:1px solid ${t.btnBorder}; background:transparent; color:${t.text}; }
+      .opt:hover { background:${t.hover}; }
+      .opt.on { background:${ACCENT}; color:#fff; border-color:${ACCENT}; }
+    `;
+    const pool = settings.poolSize === "all" ? "all" : 20;
+    const order = settings.order;
+    const opt = (act, val, label, active) =>
+      `<button class="opt${active ? " on" : ""}" data-act="${act}" data-val="${val}">${label}</button>`;
+    return `
+      <style>${css}</style>
+      <div class="wrap">
+        <div class="top">
+          <svg class="bk" viewBox="0 0 24 24" aria-hidden="true">${ICONS.gear}</svg>
+          <span class="lbl">设置 / Settings</span>
+          <span class="spacer"></span>
+          <button class="backbtn" data-act="back" title="返回 / Back">‹ 返回</button>
+        </div>
+        <div class="grp">
+          <div class="grp-title">显示数量 / Items</div>
+          <div class="seg">
+            ${opt("set-pool", "20", "20 条", pool === 20)}
+            ${opt("set-pool", "all", "全量 All", pool === "all")}
+          </div>
+        </div>
+        <div class="grp">
+          <div class="grp-title">排序 / Order</div>
+          <div class="seg">
+            ${opt("set-order", "random", "随机 Random", order === "random")}
+            ${opt("set-order", "newest", "最新到旧 Newest", order === "newest")}
+            ${opt("set-order", "oldest", "最旧到新 Oldest", order === "oldest")}
+          </div>
+        </div>
+      </div>`;
+  }
+
   function showToast(shadow, label, withUndo) {
     const wrap = shadow.querySelector(".wrap");
     if (!wrap) return;
@@ -736,6 +797,14 @@
       const tEl = wrap.querySelector(".toast");
       if (tEl) tEl.remove();
     }, TOAST_MS);
+  }
+
+  function clearToastAndUndo() {
+    lastAction = null;
+    if (toastTimer) {
+      clearTimeout(toastTimer);
+      toastTimer = null;
+    }
   }
 
   function removeFromList(id) {
@@ -758,6 +827,19 @@
     });
   }
 
+  function renderSettings(host) {
+    const theme = detectTheme();
+    host.dataset.theme = theme;
+    host.shadowRoot.innerHTML = buildSettingsMarkup(currentSettings, theme);
+  }
+
+  // View dispatcher — always use this where view mode can vary (theme refresh,
+  // settings changes, cross-tab updates) so we never kick the user out of a view.
+  function render(host) {
+    if (viewMode === "settings") renderSettings(host);
+    else renderCurrent(host);
+  }
+
   function afterAction(host, bm, type, label) {
     lastAction = { bm, type };
     removeFromList(bm.id);
@@ -771,9 +853,11 @@
 
   async function injectCard(col) {
     if (document.getElementById(HOST_ID)) return;
-    currentList = await pickPool();
+    currentSettings = await getSettings();
+    currentList = await pickPool(currentSettings);
     if (!currentList.length) return;
     currentIdx = 0; // ordering (incl. random shuffle) owns the start
+    viewMode = "card";
 
     const host = document.createElement("div");
     host.id = HOST_ID;
@@ -802,6 +886,29 @@
           currentIdx = (currentIdx + 1) % currentList.length;
           renderCurrent(host);
         }
+        return;
+      }
+      if (act === "settings") {
+        viewMode = "settings";
+        render(host);
+        return;
+      }
+      if (act === "back") {
+        viewMode = "card";
+        render(host);
+        return;
+      }
+      if (act === "set-pool" || act === "set-order") {
+        const val = btn.dataset.val;
+        const patch =
+          act === "set-pool" ? { poolSize: val === "all" ? "all" : 20 } : { order: val };
+        currentSettings = await saveSettings(patch); // single apply path
+        clearToastAndUndo();
+        const curId = currentList[currentIdx] && currentList[currentIdx].id;
+        currentList = await pickPool(currentSettings);
+        const ni = curId ? currentList.findIndex((b) => b.id === curId) : -1;
+        currentIdx = ni >= 0 ? ni : 0;
+        render(host); // stay in settings view
         return;
       }
       const bm = currentList[currentIdx];
@@ -835,14 +942,14 @@
       }
     });
 
-    renderCurrent(host);
+    render(host);
   }
 
   function updateCardTheme() {
     const host = document.getElementById(HOST_ID);
     if (!host || !host.shadowRoot) return;
     if (host.dataset.theme === detectTheme()) return;
-    renderCurrent(host);
+    render(host);
   }
 
   // ---------- main loop ----------
@@ -911,20 +1018,46 @@
     _messageHandler = onMessage;
     window.addEventListener("message", _messageHandler);
 
-    _storageHandler = (changes, area) => {
+    _storageHandler = async (changes, area) => {
       if (area !== "local") return;
       const host = document.getElementById(HOST_ID);
       if (!host) return;
-      const id = host.dataset.bookmarkId;
-      if (!id || !currentList.some((b) => b.id === id)) return; // own action already handled
-      const doneNow =
-        changes.doneById && changes.doneById.newValue && changes.doneById.newValue[id];
-      const snNow =
-        changes.snoozedById && changes.snoozedById.newValue && changes.snoozedById.newValue[id];
-      if (doneNow || snNow) {
-        removeFromList(id);
+
+      // Settings changed (possibly another tab): rebuild the pool + re-render.
+      // Handled before any current-card guard. Deduped against the locally-applied
+      // value so our own write doesn't trigger a second (re-shuffling) rebuild.
+      if (changes.settings) {
+        const ns = normalizeSettings(changes.settings.newValue);
+        if (ns.poolSize === currentSettings.poolSize && ns.order === currentSettings.order) return;
+        currentSettings = ns;
+        const curId = currentList[currentIdx] && currentList[currentIdx].id;
+        currentList = await pickPool(currentSettings);
+        const ni = curId ? currentList.findIndex((b) => b.id === curId) : -1;
+        currentIdx = ni >= 0 ? ni : 0;
         if (!currentList.length) removeCard();
-        else renderCurrent(host);
+        else render(host);
+        return;
+      }
+
+      // Done/snooze changed: re-filter the whole pool (catches off-screen items
+      // marked in another tab). Filtering the existing list — not a fresh pickPool —
+      // means our own just-applied action is a no-op here, so the Undo toast survives.
+      if (changes.doneById || changes.snoozedById) {
+        const { doneById, snoozedById } = await getLocal(["doneById", "snoozedById"]);
+        const done = doneById || {};
+        const sn = snoozedById || {};
+        const now = Date.now();
+        const before = currentList.length;
+        const curId = currentList[currentIdx] && currentList[currentIdx].id;
+        currentList = currentList.filter(
+          (b) => !done[b.id] && !(sn[b.id] && Date.parse(sn[b.id]) > now)
+        );
+        if (currentList.length !== before) {
+          const ni = curId ? currentList.findIndex((b) => b.id === curId) : -1;
+          currentIdx = ni >= 0 ? ni : Math.min(currentIdx, Math.max(0, currentList.length - 1));
+          if (!currentList.length) removeCard();
+          else if (viewMode === "card") render(host);
+        }
       }
     };
     try {
