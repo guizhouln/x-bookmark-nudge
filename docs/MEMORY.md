@@ -65,12 +65,25 @@ work as capture → active refresh → DOM card.
    (light / dark / media mocks under `docs/`). Pushed to
    https://github.com/guizhouln/x-bookmark-nudge (public, MIT, default branch
    `main`). Agent memory consolidated into `CLAUDE.md` (+ `AGENTS.md` pointer).
+5. **v2.1.x — settings + link cards** (Codex-reviewed plan via `ce-plan`, see
+   `docs/plans/`): in-card settings panel (gear) for pool size (`20`/`all`) +
+   ordering (`random`/`newest`/`oldest`), with **bookmark-recency** ordering rebuilt
+   from the API timeline (`applyFetchedBookmarks`); link/article cards (resolve `t.co`
+   + `result.card`); native **X Article** titles. Fixes: card lost when returning to
+   Home from a tweet (2.1.1); stale-cache `SCHEMA_VERSION` migration so re-parsing
+   reaches cached bookmarks (2.1.2 links, 2.1.3 article titles).
+6. **v2.2.0 — Done un-bookmarks** on X (`DeleteBookmark`; Undo re-adds via
+   `CreateBookmark`); the SW scrapes mutation queryIds. Stats row clickable.
+7. **v2.3.0 — interactive stat buttons**: reply (intent composer), repost, like,
+   bookmark each fire X's own GraphQL mutation with optimistic toggle + color; views
+   opens the tweet. `toggleStat`/`doMutation` in content.js; `scrapeMutations` in SW.
 
 ## Current state
 
-Live public repo at https://github.com/guizhouln/x-bookmark-nudge. Loadable unpacked
-from the repo root. `gh` (2.95.0) installed locally; git identity
-`guizhouln <guizhou2423@gmail.com>`. The superseded original folder
+Live public repo at https://github.com/guizhouln/x-bookmark-nudge — currently
+**v2.3.0** (`manifest`), `SCHEMA_VERSION = 4`. Tags `v2.1.0`–`v2.3.0`, each with a
+GitHub Release. Loadable unpacked from the repo root. `gh` (2.95.0) installed locally;
+git identity `guizhouln <guizhou2423@gmail.com>`. The superseded original folder
 `/Users/pro/bookmark-nudge` may be deleted.
 
 ## Key code paths
