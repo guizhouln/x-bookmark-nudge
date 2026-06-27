@@ -61,6 +61,17 @@ work as capture → active refresh → DOM card.
 3. **v2** (this project) — fix `Extension context invalidated`; silent auto-seed via
    bundle scrape (new service worker); prev/next navigation; full tweet + media +
    engagement stats; packaged as a public MIT repo with this memory.
+4. **Published** — bilingual (中文 / English) README with a screenshot gallery
+   (light / dark / media mocks under `docs/`). Pushed to
+   https://github.com/guizhouln/x-bookmark-nudge (public, MIT, default branch
+   `main`). Agent memory consolidated into `CLAUDE.md` (+ `AGENTS.md` pointer).
+
+## Current state
+
+Live public repo at https://github.com/guizhouln/x-bookmark-nudge. Loadable unpacked
+from the repo root. `gh` (2.95.0) installed locally; git identity
+`guizhouln <guizhou2423@gmail.com>`. The superseded original folder
+`/Users/pro/bookmark-nudge` may be deleted.
 
 ## Key code paths
 
