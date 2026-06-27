@@ -19,6 +19,9 @@
   const TOAST_MS = 5000;
   const DEBOUNCE_MS = 200;
 
+  const DEFAULT_SETTINGS = { poolSize: 20, order: "random" };
+  const VALID_ORDERS = ["random", "oldest", "newest"];
+
   // Per-page-load UI state (not persisted).
   let sessionDismissed = false;
   let refreshInFlight = false;
@@ -77,6 +80,24 @@
   function getCookie(name) {
     const m = document.cookie.match(new RegExp("(?:^|; )" + name + "=([^;]*)"));
     return m ? decodeURIComponent(m[1]) : null;
+  }
+
+  // ---------- display settings (pool size + ordering) ----------
+  function normalizeSettings(raw) {
+    raw = raw || {};
+    const poolSize = raw.poolSize === "all" ? "all" : 20; // number 20 so === checks work
+    const order = VALID_ORDERS.indexOf(raw.order) >= 0 ? raw.order : DEFAULT_SETTINGS.order;
+    return { poolSize, order };
+  }
+  async function getSettings() {
+    const { settings } = await getLocal(["settings"]);
+    return normalizeSettings(settings);
+  }
+  async function saveSettings(partial) {
+    const cur = await getSettings();
+    const next = normalizeSettings(Object.assign({}, cur, partial));
+    await setLocal({ settings: next });
+    return next;
   }
 
   // ---------- relay listener (must exist before X's first fetch) ----------
@@ -285,6 +306,30 @@
     await setLocal({ bookmarkById, order });
   }
 
+  // Rebuild `order` from a full active fetch so it reflects bookmark recency
+  // (API timeline order = most-recently-bookmarked first), then any older known
+  // ids not in this fetch. This is the authoritative ordering for newest/oldest.
+  async function applyFetchedBookmarks(collected) {
+    const cur = await getLocal(["bookmarkById", "order"]);
+    const bookmarkById = cur.bookmarkById || {};
+    const prevOrder = Array.isArray(cur.order) ? cur.order : [];
+    const fetchedIds = [];
+    const seen = new Set();
+    for (const b of collected) {
+      bookmarkById[b.id] = b;
+      if (!seen.has(b.id)) {
+        seen.add(b.id);
+        fetchedIds.push(b.id);
+      }
+    }
+    const tail = prevOrder.filter((id) => !seen.has(id) && bookmarkById[id]);
+    await setLocal({
+      bookmarkById,
+      order: fetchedIds.concat(tail),
+      lastFetchedAt: new Date().toISOString(),
+    });
+  }
+
   // ---------- seed creds via service worker bundle-scrape (U2) ----------
   function findBundleUrl() {
     const direct = document.querySelector(
@@ -416,13 +461,13 @@
       cursor = next;
     }
 
-    if (collected.length) await mergeBookmarks(collected);
-    await setLocal({ lastFetchedAt: new Date().toISOString() });
+    if (collected.length) await applyFetchedBookmarks(collected);
+    else await setLocal({ lastFetchedAt: new Date().toISOString() });
     console.debug(LOG, "active refresh pulled", collected.length, "over", pages, "pages");
   }
 
   // ---------- eligibility + mutations ----------
-  async function pickEligibleList() {
+  async function eligibleList() {
     const { bookmarkById, order, doneById, snoozedById } = await getLocal([
       "bookmarkById",
       "order",
@@ -435,7 +480,31 @@
     const now = Date.now();
     return order
       .filter((id) => bookmarkById[id] && !done[id] && !(sn[id] && Date.parse(sn[id]) > now))
-      .map((id) => bookmarkById[id]);
+      .map((id) => bookmarkById[id]); // order = bookmark recency, newest first
+  }
+
+  function orderEligible(list, order) {
+    if (order === "oldest") return list.slice().reverse();
+    if (order === "random") {
+      const a = list.slice();
+      for (let i = a.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        const tmp = a[i];
+        a[i] = a[j];
+        a[j] = tmp;
+      }
+      return a;
+    }
+    return list; // "newest" = as-is
+  }
+
+  // The prev/next pool: eligible bookmarks ordered per settings, capped at 20
+  // unless poolSize is "all".
+  async function pickPool(settings) {
+    const s = settings || (await getSettings());
+    let list = orderEligible(await eligibleList(), s.order);
+    if (s.poolSize === 20) list = list.slice(0, 20);
+    return list;
   }
 
   async function markDone(id) {
@@ -702,9 +771,9 @@
 
   async function injectCard(col) {
     if (document.getElementById(HOST_ID)) return;
-    currentList = await pickEligibleList();
+    currentList = await pickPool();
     if (!currentList.length) return;
-    currentIdx = Math.floor(Math.random() * currentList.length); // random start
+    currentIdx = 0; // ordering (incl. random shuffle) owns the start
 
     const host = document.createElement("div");
     host.id = HOST_ID;
