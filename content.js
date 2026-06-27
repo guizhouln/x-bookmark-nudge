@@ -22,7 +22,7 @@
   const DEFAULT_SETTINGS = { poolSize: 20, order: "random" };
   const VALID_ORDERS = ["random", "oldest", "newest"];
   // Bump when the parsed bookmark shape changes so cached entries are re-fetched.
-  const SCHEMA_VERSION = 3;
+  const SCHEMA_VERSION = 4;
 
   // Per-page-load UI state (not persisted).
   let sessionDismissed = false;
@@ -306,6 +306,9 @@
         quotes: legacy.quote_count || 0,
         bookmarks: legacy.bookmark_count || 0,
       };
+      const liked = !!legacy.favorited;
+      const retweeted = !!legacy.retweeted;
+      const bookmarked = legacy.bookmarked != null ? !!legacy.bookmarked : true;
 
       const media = [];
       const mediaArr =
@@ -362,6 +365,9 @@
         createdAt: legacy.created_at || "",
         tweetUrl,
         stats,
+        liked,
+        retweeted,
+        bookmarked,
         views,
         media,
       };
@@ -595,13 +601,20 @@
     console.debug(LOG, "active refresh pulled", collected.length, "over", pages, "pages");
   }
 
-  // Add (add=true) or remove (add=false) the bookmark on X itself. Done removes it;
-  // Undo re-adds it. Best-effort + self-healing (re-scrapes the mutation queryId).
-  async function setBookmarkOnX(tweetId, add) {
+  // Generic X GraphQL mutation (like / repost / bookmark). Best-effort + self-healing
+  // (re-scrapes the mutation queryId if missing or rotated).
+  const MUTATION_VARKEY = {
+    FavoriteTweet: "tweet_id",
+    UnfavoriteTweet: "tweet_id",
+    CreateRetweet: "tweet_id",
+    DeleteRetweet: "source_tweet_id",
+    CreateBookmark: "tweet_id",
+    DeleteBookmark: "tweet_id",
+  };
+  async function doMutation(op, tweetId) {
     if (!isContextValid() || location.origin !== "https://x.com") return false;
     const ct0 = getCookie("ct0");
     if (!ct0) return false;
-    const op = add ? "CreateBookmark" : "DeleteBookmark";
     let { creds } = await getLocal(["creds"]);
     let qid = creds && creds.mutations && creds.mutations[op];
     if (!qid) {
@@ -609,17 +622,24 @@
       qid = creds && creds.mutations && creds.mutations[op];
     }
     if (!qid || !creds) return false;
+    const variables = {};
+    variables[MUTATION_VARKEY[op] || "tweet_id"] = String(tweetId);
+    if (op === "CreateRetweet" || op === "DeleteRetweet") variables.dark_request = false;
     try {
       const resp = await fetch(location.origin + "/i/api/graphql/" + qid + "/" + op, {
         method: "POST",
         credentials: "include",
         headers: buildHeaders(creds, ct0),
-        body: JSON.stringify({ variables: { tweet_id: String(tweetId) }, queryId: qid }),
+        body: JSON.stringify({ variables: variables, queryId: qid }),
       });
       return resp.ok;
     } catch (_) {
       return false;
     }
+  }
+  // Done / Undo wrapper.
+  function setBookmarkOnX(tweetId, add) {
+    return doMutation(add ? "CreateBookmark" : "DeleteBookmark", tweetId);
   }
 
   // ---------- eligibility + mutations ----------
@@ -804,12 +824,17 @@
       .lc-domain { display:block; color:${t.sub}; font-size:13px; margin-bottom:3px; }
       .lc-title { display:block; font-weight:700; font-size:15px; line-height:1.3;
         display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; }
-      .stats { display:flex; gap:18px; color:${t.sub}; font-size:13px; margin:0 0 12px; flex-wrap:wrap;
-        cursor:pointer; border-radius:6px; }
-      .stats:hover { color:${ACCENT}; }
-      .stats:hover .stat svg { fill:${ACCENT}; }
-      .stat { display:flex; align-items:center; gap:5px; font-variant-numeric:tabular-nums; }
+      .stats { display:flex; gap:6px; font-size:13px; margin:0 0 12px; flex-wrap:wrap; }
+      .stat { display:flex; align-items:center; gap:5px; font:inherit; font-variant-numeric:tabular-nums;
+        color:${t.sub}; cursor:pointer; border:0; background:transparent; padding:4px 7px; border-radius:999px; }
       .stat svg { width:16px; height:16px; fill:${t.sub}; }
+      .stat:hover { background:${t.hover}; }
+      .stat.reply:hover, .stat.views:hover, .stat.bk:hover, .stat.bk.on { color:${ACCENT}; }
+      .stat.reply:hover svg, .stat.views:hover svg, .stat.bk:hover svg, .stat.bk.on svg { fill:${ACCENT}; }
+      .stat.rt:hover, .stat.rt.on { color:#00ba7c; }
+      .stat.rt:hover svg, .stat.rt.on svg { fill:#00ba7c; }
+      .stat.like:hover, .stat.like.on { color:#f91880; }
+      .stat.like:hover svg, .stat.like.on svg { fill:#f91880; }
       .actions { display:flex; gap:8px; flex-wrap:wrap; }
       button.act { font-family:${FONT}; font-weight:700; font-size:14px; padding:7px 16px;
         border-radius:999px; cursor:pointer; border:1px solid ${t.btnBorder}; background:transparent; color:${t.text}; }
@@ -854,17 +879,20 @@
     }
 
     const s = bm.stats || {};
+    const statBtn = (cls, act, icon, count, on, title) =>
+      `<button class="stat ${cls}${on ? " on" : ""}" data-act="${act}" title="${title}">` +
+      statSvg(icon) +
+      (count ? `<span>${count}</span>` : "") +
+      `</button>`;
     const statHtml =
-      `<div class="stats" data-act="open" title="在 X 中打开 / Open on X">` +
-      `<span class="stat">${statSvg(ICONS.reply)}${formatCount(s.replies)}</span>` +
-      `<span class="stat">${statSvg(ICONS.repost)}${formatCount(s.reposts)}</span>` +
-      `<span class="stat">${statSvg(ICONS.like)}${formatCount(s.likes)}</span>` +
+      `<div class="stats">` +
+      statBtn("reply", "reply", ICONS.reply, formatCount(s.replies), false, "回复 / Reply") +
+      statBtn("rt", "repost", ICONS.repost, formatCount(s.reposts), bm.retweeted, "转推 / Repost") +
+      statBtn("like", "like", ICONS.like, formatCount(s.likes), bm.liked, "喜欢 / Like") +
       (bm.views != null
-        ? `<span class="stat">${statSvg(ICONS.view)}${formatCount(bm.views)}</span>`
+        ? statBtn("views", "views", ICONS.view, formatCount(bm.views), false, "在 X 中打开 / Open")
         : "") +
-      (s.bookmarks
-        ? `<span class="stat"><svg viewBox="0 0 24 24" aria-hidden="true">${ICONS.bookmark}</svg>${formatCount(s.bookmarks)}</span>`
-        : "") +
+      statBtn("bk", "bmk", ICONS.bookmark, formatCount(s.bookmarks), bm.bookmarked, "书签 / Bookmark") +
       `</div>`;
 
     const total = pos ? pos.total : 1;
@@ -1026,6 +1054,33 @@
     showToast(host.shadowRoot, label, type !== "keep");
   }
 
+  // Per-stat action: optimistically toggle like / repost / bookmark on the card and
+  // fire the matching X mutation; persist the new state so it survives re-renders.
+  function toggleStat(host, bm, kind) {
+    if (kind === "like") {
+      bm.liked = !bm.liked;
+      bm.stats.likes = Math.max(0, (bm.stats.likes || 0) + (bm.liked ? 1 : -1));
+      doMutation(bm.liked ? "FavoriteTweet" : "UnfavoriteTweet", bm.id);
+    } else if (kind === "repost") {
+      bm.retweeted = !bm.retweeted;
+      bm.stats.reposts = Math.max(0, (bm.stats.reposts || 0) + (bm.retweeted ? 1 : -1));
+      doMutation(bm.retweeted ? "CreateRetweet" : "DeleteRetweet", bm.id);
+    } else if (kind === "bmk") {
+      bm.bookmarked = !bm.bookmarked;
+      bm.stats.bookmarks = Math.max(0, (bm.stats.bookmarks || 0) + (bm.bookmarked ? 1 : -1));
+      doMutation(bm.bookmarked ? "CreateBookmark" : "DeleteBookmark", bm.id);
+    }
+    renderCurrent(host);
+    persistBm(bm);
+  }
+  async function persistBm(bm) {
+    const { bookmarkById } = await getLocal(["bookmarkById"]);
+    if (bookmarkById && bookmarkById[bm.id]) {
+      bookmarkById[bm.id] = bm;
+      await setLocal({ bookmarkById });
+    }
+  }
+
   // restore=true re-creates the card DOM from the existing in-memory pool/position
   // (used when returning to Home after navigating away); restore=false builds a
   // fresh pool (the first show of this page load).
@@ -1096,6 +1151,16 @@
         if (bm) window.open(bm.tweetUrl, "_blank", "noopener");
       } else if (act === "openlink") {
         if (bm && bm.link && bm.link.url) window.open(bm.link.url, "_blank", "noopener");
+      } else if (act === "reply") {
+        if (bm) window.open("https://x.com/intent/tweet?in_reply_to=" + bm.id, "_blank", "noopener");
+      } else if (act === "views") {
+        if (bm) window.open(bm.tweetUrl, "_blank", "noopener");
+      } else if (act === "like") {
+        if (bm) toggleStat(host, bm, "like");
+      } else if (act === "repost") {
+        if (bm) toggleStat(host, bm, "repost");
+      } else if (act === "bmk") {
+        if (bm) toggleStat(host, bm, "bmk");
       } else if (act === "read") {
         if (!bm) return;
         window.open(bm.tweetUrl, "_blank", "noopener");

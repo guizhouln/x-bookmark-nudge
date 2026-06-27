@@ -1,5 +1,13 @@
 # Changelog
 
+## 2.3.0
+
+- **Interactive stat buttons.** Each item in the stats row is now its own action,
+  matching X: **reply** opens the reply composer, **repost** retweets, **like** likes,
+  **bookmark** toggles the bookmark — each via X's own mutation, with an optimistic
+  count + color (green repost, pink like). **Views** opens the tweet (not an action).
+  Like/repost/bookmark toggle off on a second click.
+
 ## 2.2.0
 
 - **Done now removes the bookmark on X.** Clicking Done un-bookmarks the tweet on X

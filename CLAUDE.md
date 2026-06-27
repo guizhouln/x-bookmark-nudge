@@ -34,8 +34,11 @@ No build step, no dependencies. Load unpacked from the repo root.
 - **Read** = open the tweet + hide locally (keeps the X bookmark). **Done** =
   un-bookmark on X (`DeleteBookmark` mutation) + hide; Undo re-bookmarks
   (`CreateBookmark`). **Keep for later** = snooze 24h. 5s Undo toast on Read/Done.
-  Stats row click opens the tweet. Mutation queryIds are scraped by the SW alongside
-  the Bookmarks queryId.
+  Each stat is its own button: reply (intent composer), repost (Create/DeleteRetweet),
+  like (Favorite/UnfavoriteTweet), bookmark (Create/DeleteBookmark) — optimistic toggle
+  via `toggleStat`/`doMutation`; views opens the tweet. Mutation queryIds are scraped by
+  the SW (`scrapeMutations`) alongside the Bookmarks queryId. Note `DeleteRetweet` uses
+  `source_tweet_id`, others use `tweet_id`.
 - **Auto-seed = silent bundle scrape** (chosen over a visible background tab).
 - **Privacy:** never persist `ct0`/`auth_token`; read `ct0` fresh per request. The
   only token in source is X's public web bearer constant (not a secret). No secrets

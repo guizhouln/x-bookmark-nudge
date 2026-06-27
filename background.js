@@ -32,6 +32,21 @@ function findQueryId(text, op, type) {
   return m ? m[1] : null;
 }
 
+// Mutations the card can trigger (per-stat actions + Done/Undo).
+const MUTATION_OPS = [
+  "CreateBookmark",
+  "DeleteBookmark",
+  "FavoriteTweet",
+  "UnfavoriteTweet",
+  "CreateRetweet",
+  "DeleteRetweet",
+];
+function scrapeMutations(text) {
+  const out = {};
+  for (const op of MUTATION_OPS) out[op] = findQueryId(text, op, "mutation");
+  return out;
+}
+
 async function scrapeCreds(bundleUrl) {
   const resp = await fetch(bundleUrl);
   if (!resp.ok) throw new Error("bundle fetch " + resp.status);
@@ -46,11 +61,8 @@ async function scrapeCreds(bundleUrl) {
     fieldToggles: namesToTrueMap(m[3]),
     bearer: PUBLIC_BEARER,
     source: "bundle",
-    // Mutation queryIds for un-bookmark / re-bookmark (Done + Undo).
-    mutations: {
-      CreateBookmark: findQueryId(text, "CreateBookmark", "mutation"),
-      DeleteBookmark: findQueryId(text, "DeleteBookmark", "mutation"),
-    },
+    // Mutation queryIds for the stat actions (like/repost/bookmark) + Done/Undo.
+    mutations: scrapeMutations(text),
   };
   return creds;
 }
