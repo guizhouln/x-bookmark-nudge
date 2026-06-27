@@ -22,7 +22,7 @@
   const DEFAULT_SETTINGS = { poolSize: 20, order: "random" };
   const VALID_ORDERS = ["random", "oldest", "newest"];
   // Bump when the parsed bookmark shape changes so cached entries are re-fetched.
-  const SCHEMA_VERSION = 2;
+  const SCHEMA_VERSION = 3;
 
   // Per-page-load UI state (not persisted).
   let sessionDismissed = false;
@@ -331,6 +331,25 @@
       const tweetUrl = screenName
         ? "https://x.com/" + screenName + "/status/" + restId
         : "https://x.com/i/status/" + restId;
+
+      // Native X Article (x.com/i/article/...): its real title lives in the tweet's
+      // article data, not the URL — use it instead of the bare article link.
+      const article =
+        result.article &&
+        result.article.article_results &&
+        result.article.article_results.result;
+      const articleTitle = article && (article.title || (article.metadata && article.metadata.title));
+      if (articleTitle) {
+        let aUrl = "";
+        for (const tco in urlByTco) {
+          if (/\/i\/article\//.test(urlByTco[tco].expanded)) {
+            aUrl = urlByTco[tco].expanded;
+            break;
+          }
+        }
+        link = { title: articleTitle, url: aUrl || tweetUrl, domain: "x.com", display: articleTitle };
+        text = "";
+      }
 
       return {
         id: String(restId),

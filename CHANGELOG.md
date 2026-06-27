@@ -1,5 +1,11 @@
 # Changelog
 
+## 2.1.3
+
+- **X Articles**: bookmarks of native X Articles (`x.com/i/article/...`) now show the
+  article's real title instead of the bare article URL (read from the tweet's article
+  data). Includes a cache migration so existing article bookmarks pick up the title.
+
 ## 2.1.2
 
 - **Fix:** link-only bookmarks still showed a bare `t.co` because cached bookmarks
