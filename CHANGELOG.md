@@ -1,5 +1,15 @@
 # Changelog
 
+## 2.1.0
+
+- **Display settings.** In-card settings panel (gear button, top-right of the card)
+  to choose the prev/next pool size (`20` vs `全量/all`) and ordering (`完全随机` /
+  `由最新到旧` / `由旧到新`). Defaults: 20, random. Ordering uses bookmark recency
+  rebuilt from the live timeline, and applies live + across tabs.
+- **Link/article cards.** Link-only bookmarks (e.g. a shared article showing only a
+  `t.co`) now render the article **title + link** resolved from URL entities and X's
+  card data; inline `t.co` shortlinks display as readable domains.
+
 ## 2.0.0
 
 - **Auto-seed (no manual step).** Added a service worker that scrapes the current

@@ -25,8 +25,12 @@ No build step, no dependencies. Load unpacked from the repo root.
 
 - **Cadence:** one card per page load (in-memory `shownThisLoad`), NOT a persisted
   per-day lock — that previously broke "every time I open X". 
-- **Selection:** random start over the eligible (un-done, un-snoozed) list; prev/next
-  pages through it.
+- **Selection:** display settings (gear → in-card panel) choose pool size (`20` vs
+  `all`) and order (`random`/`newest`/`oldest`); ordering uses **bookmark recency**
+  rebuilt from the API timeline in `applyFetchedBookmarks`, not tweet `createdAt`.
+  Defaults 20/random. prev/next pages the pool.
+- **Link/article:** link-only bookmarks render the article title + link (from
+  `legacy.entities.urls` + `result.card` data); inline t.co shown as readable domains.
 - **Read = open + mark Done** with a 5s Undo toast.
 - **Auto-seed = silent bundle scrape** (chosen over a visible background tab).
 - **Privacy:** never persist `ct0`/`auth_token`; read `ct0` fresh per request. The
