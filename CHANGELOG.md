@@ -1,5 +1,14 @@
 # Changelog
 
+## 2.2.0
+
+- **Done now removes the bookmark on X.** Clicking Done un-bookmarks the tweet on X
+  (via the `DeleteBookmark` mutation), not just hiding it locally — so your X bookmarks
+  get cleaned up as you go. Undo re-bookmarks it (`CreateBookmark`). Read still just
+  opens the tweet and hides it locally, keeping the X bookmark.
+- **Clickable stats row.** The engagement-stats row (replies / reposts / likes / views /
+  bookmarks) now opens the tweet on X when clicked.
+
 ## 2.1.3
 
 - **X Articles**: bookmarks of native X Articles (`x.com/i/article/...`) now show the

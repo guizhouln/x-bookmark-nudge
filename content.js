@@ -595,6 +595,33 @@
     console.debug(LOG, "active refresh pulled", collected.length, "over", pages, "pages");
   }
 
+  // Add (add=true) or remove (add=false) the bookmark on X itself. Done removes it;
+  // Undo re-adds it. Best-effort + self-healing (re-scrapes the mutation queryId).
+  async function setBookmarkOnX(tweetId, add) {
+    if (!isContextValid() || location.origin !== "https://x.com") return false;
+    const ct0 = getCookie("ct0");
+    if (!ct0) return false;
+    const op = add ? "CreateBookmark" : "DeleteBookmark";
+    let { creds } = await getLocal(["creds"]);
+    let qid = creds && creds.mutations && creds.mutations[op];
+    if (!qid) {
+      creds = await scrapeCredsViaSW();
+      qid = creds && creds.mutations && creds.mutations[op];
+    }
+    if (!qid || !creds) return false;
+    try {
+      const resp = await fetch(location.origin + "/i/api/graphql/" + qid + "/" + op, {
+        method: "POST",
+        credentials: "include",
+        headers: buildHeaders(creds, ct0),
+        body: JSON.stringify({ variables: { tweet_id: String(tweetId) }, queryId: qid }),
+      });
+      return resp.ok;
+    } catch (_) {
+      return false;
+    }
+  }
+
   // ---------- eligibility + mutations ----------
   async function eligibleList() {
     const { bookmarkById, order, doneById, snoozedById } = await getLocal([
@@ -777,7 +804,10 @@
       .lc-domain { display:block; color:${t.sub}; font-size:13px; margin-bottom:3px; }
       .lc-title { display:block; font-weight:700; font-size:15px; line-height:1.3;
         display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; }
-      .stats { display:flex; gap:18px; color:${t.sub}; font-size:13px; margin:0 0 12px; flex-wrap:wrap; }
+      .stats { display:flex; gap:18px; color:${t.sub}; font-size:13px; margin:0 0 12px; flex-wrap:wrap;
+        cursor:pointer; border-radius:6px; }
+      .stats:hover { color:${ACCENT}; }
+      .stats:hover .stat svg { fill:${ACCENT}; }
       .stat { display:flex; align-items:center; gap:5px; font-variant-numeric:tabular-nums; }
       .stat svg { width:16px; height:16px; fill:${t.sub}; }
       .actions { display:flex; gap:8px; flex-wrap:wrap; }
@@ -825,7 +855,7 @@
 
     const s = bm.stats || {};
     const statHtml =
-      `<div class="stats">` +
+      `<div class="stats" data-act="open" title="在 X 中打开 / Open on X">` +
       `<span class="stat">${statSvg(ICONS.reply)}${formatCount(s.replies)}</span>` +
       `<span class="stat">${statSvg(ICONS.repost)}${formatCount(s.reposts)}</span>` +
       `<span class="stat">${statSvg(ICONS.like)}${formatCount(s.likes)}</span>` +
@@ -1074,7 +1104,8 @@
       } else if (act === "done") {
         if (!bm) return;
         await markDone(bm.id);
-        afterAction(host, bm, "done", "Marked done.");
+        setBookmarkOnX(bm.id, false); // remove from X bookmarks (best effort)
+        afterAction(host, bm, "done", "Done — removed from X bookmarks.");
       } else if (act === "keep") {
         if (!bm) return;
         await snooze(bm.id);
@@ -1087,7 +1118,8 @@
           const la = lastAction;
           lastAction = null;
           if (la.type === "read" || la.type === "done") await unmarkDone(la.bm.id);
-          else if (la.type === "keep") await unsnooze(la.bm.id);
+          if (la.type === "done") setBookmarkOnX(la.bm.id, true); // re-bookmark on X
+          if (la.type === "keep") await unsnooze(la.bm.id);
           currentList.splice(Math.min(currentIdx, currentList.length), 0, la.bm);
           renderCurrent(host);
         }

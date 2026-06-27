@@ -24,6 +24,14 @@ function namesToTrueMap(listStr) {
   return out;
 }
 
+// Find a GraphQL operation's queryId by name + type (e.g. CreateBookmark mutation).
+function findQueryId(text, op, type) {
+  const m = text.match(
+    new RegExp('\\{queryId:"([^"]+)",operationName:"' + op + '",operationType:"' + type + '"')
+  );
+  return m ? m[1] : null;
+}
+
 async function scrapeCreds(bundleUrl) {
   const resp = await fetch(bundleUrl);
   if (!resp.ok) throw new Error("bundle fetch " + resp.status);
@@ -38,6 +46,11 @@ async function scrapeCreds(bundleUrl) {
     fieldToggles: namesToTrueMap(m[3]),
     bearer: PUBLIC_BEARER,
     source: "bundle",
+    // Mutation queryIds for un-bookmark / re-bookmark (Done + Undo).
+    mutations: {
+      CreateBookmark: findQueryId(text, "CreateBookmark", "mutation"),
+      DeleteBookmark: findQueryId(text, "DeleteBookmark", "mutation"),
+    },
   };
   return creds;
 }
@@ -45,15 +58,16 @@ async function scrapeCreds(bundleUrl) {
 chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
   if (!msg || msg.type !== "scrapeCreds" || !msg.bundleUrl) return;
   scrapeCreds(msg.bundleUrl)
-    .then((creds) => {
-      // Don't clobber higher-fidelity creds captured live by the interceptor.
+    .then((scraped) => {
       chrome.storage.local.get(["creds"], (cur) => {
         const existing = cur && cur.creds;
-        if (existing && existing.source === "interceptor" && existing.queryId) {
-          sendResponse({ creds: existing });
-          return;
-        }
-        chrome.storage.local.set({ creds }, () => sendResponse({ creds }));
+        // Keep higher-fidelity interceptor read creds, but always add the scraped
+        // mutation ids (the interceptor never captures those).
+        const merged =
+          existing && existing.source === "interceptor" && existing.queryId
+            ? Object.assign({}, existing, { mutations: scraped.mutations })
+            : scraped;
+        chrome.storage.local.set({ creds: merged }, () => sendResponse({ creds: merged }));
       });
     })
     .catch((err) => {

@@ -31,7 +31,11 @@ No build step, no dependencies. Load unpacked from the repo root.
   Defaults 20/random. prev/next pages the pool.
 - **Link/article:** link-only bookmarks render the article title + link (from
   `legacy.entities.urls` + `result.card` data); inline t.co shown as readable domains.
-- **Read = open + mark Done** with a 5s Undo toast.
+- **Read** = open the tweet + hide locally (keeps the X bookmark). **Done** =
+  un-bookmark on X (`DeleteBookmark` mutation) + hide; Undo re-bookmarks
+  (`CreateBookmark`). **Keep for later** = snooze 24h. 5s Undo toast on Read/Done.
+  Stats row click opens the tweet. Mutation queryIds are scraped by the SW alongside
+  the Bookmarks queryId.
 - **Auto-seed = silent bundle scrape** (chosen over a visible background tab).
 - **Privacy:** never persist `ct0`/`auth_token`; read `ct0` fresh per request. The
   only token in source is X's public web bearer constant (not a secret). No secrets
