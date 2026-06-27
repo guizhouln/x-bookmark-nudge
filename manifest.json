@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Bookmark Nudge for X",
-  "version": "2.1.0",
+  "version": "2.1.1",
   "description": "Each time you open X, surfaces one of your saved bookmarks as a card at the top of your Home feed — so you actually read your bookmarks instead of hoarding them.",
   "permissions": ["storage"],
   "host_permissions": ["https://x.com/*", "https://abs.twimg.com/*"],

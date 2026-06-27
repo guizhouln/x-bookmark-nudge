@@ -1,5 +1,11 @@
 # Changelog
 
+## 2.1.1
+
+- **Fix:** the bookmark card disappeared after navigating into a single tweet and
+  back to Home. The card is now restored on return (preserving the same bookmark and
+  position) instead of being suppressed by the once-per-open flag.
+
 ## 2.1.0
 
 - **Display settings.** In-card settings panel (gear button, top-right of the card)

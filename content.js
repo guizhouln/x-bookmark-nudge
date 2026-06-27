@@ -953,12 +953,17 @@
     showToast(host.shadowRoot, label, type !== "keep");
   }
 
-  async function injectCard(col) {
+  // restore=true re-creates the card DOM from the existing in-memory pool/position
+  // (used when returning to Home after navigating away); restore=false builds a
+  // fresh pool (the first show of this page load).
+  async function injectCard(col, restore) {
     if (document.getElementById(HOST_ID)) return;
-    currentSettings = await getSettings();
-    currentList = await pickPool(currentSettings);
+    if (!restore) {
+      currentSettings = await getSettings();
+      currentList = await pickPool(currentSettings);
+      currentIdx = 0; // ordering (incl. random shuffle) owns the start
+    }
     if (!currentList.length) return;
-    currentIdx = 0; // ordering (incl. random shuffle) owns the start
     viewMode = "card";
 
     const host = document.createElement("div");
@@ -1082,9 +1087,15 @@
         updateCardTheme();
         return;
       }
-      if (sessionDismissed || shownThisLoad) return;
+      if (sessionDismissed) return;
+      if (shownThisLoad) {
+        // Returned to Home after navigating away — restore the same card
+        // (preserve pool + position) instead of treating it as already shown.
+        if (currentList.length) await injectCard(col, true);
+        return;
+      }
 
-      await injectCard(col);
+      await injectCard(col, false);
       if (document.getElementById(HOST_ID)) shownThisLoad = true;
     } finally {
       busy = false;
