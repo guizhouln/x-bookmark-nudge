@@ -173,6 +173,52 @@
     return { bookmarks: out, cursor };
   }
 
+  // ---------- link/article (URL entities + link card) helpers (U3) ----------
+  function hostFromUrl(u) {
+    try {
+      return new URL(u).hostname.replace(/^www\./, "");
+    } catch (_) {
+      return "";
+    }
+  }
+  function bindingMap(bv) {
+    // binding_values is an array of {key, value} (older) or an object map (newer)
+    const map = {};
+    if (Array.isArray(bv)) {
+      for (const e of bv) if (e && e.key) map[e.key] = e.value;
+    } else if (bv && typeof bv === "object") {
+      Object.assign(map, bv);
+    }
+    return map;
+  }
+  function strVal(v) {
+    if (!v) return "";
+    if (typeof v === "string") return v;
+    return v.string_value || (v.value && v.value.string_value) || "";
+  }
+  function extractLink(result, urlByTco) {
+    try {
+      const card = result.card && result.card.legacy;
+      if (card && card.binding_values) {
+        const bv = bindingMap(card.binding_values);
+        const title = strVal(bv.title) || strVal(bv.event_title);
+        const domain = strVal(bv.domain) || strVal(bv.vanity_url);
+        const tco = strVal(bv.card_url) || (result.card && result.card.url) || "";
+        const resolved = urlByTco[tco];
+        const url = (resolved && resolved.expanded) || strVal(bv.website_url) || tco;
+        if (title || url) {
+          return {
+            title: title || domain || hostFromUrl(url) || url,
+            url,
+            domain: domain || hostFromUrl(url),
+            display: (resolved && resolved.display) || hostFromUrl(url),
+          };
+        }
+      }
+    } catch (_) {}
+    return null;
+  }
+
   function extractTweet(entry) {
     try {
       const itemContent = entry && entry.content && entry.content.itemContent;
@@ -193,7 +239,44 @@
         result.note_tweet.note_tweet_results &&
         result.note_tweet.note_tweet_results.result &&
         result.note_tweet.note_tweet_results.result.text;
-      const text = noteText || legacy.full_text || legacy.text || "";
+
+      // Resolve t.co shortlinks to readable URLs and extract a link/article card.
+      const urlByTco = {};
+      const urlEntities = (legacy.entities && legacy.entities.urls) || [];
+      for (const u of urlEntities) {
+        if (u && u.url) {
+          urlByTco[u.url] = {
+            expanded: u.expanded_url || u.url,
+            display: u.display_url || u.expanded_url || u.url,
+          };
+        }
+      }
+      let resolvedText = noteText || legacy.full_text || legacy.text || "";
+      for (const tco in urlByTco) {
+        resolvedText = resolvedText.split(tco).join(urlByTco[tco].display);
+      }
+      let link = extractLink(result, urlByTco);
+      let text = cleanText(resolvedText);
+      // If the body is only the link the card already represents, drop the text.
+      if (link && text) {
+        const stripped = text
+          .split(link.display || " ").join("")
+          .split(link.url || " ").join("")
+          .trim();
+        if (!stripped) text = "";
+      }
+      // No card preview, but the body is just a single link → surface it as a card.
+      if (!link) {
+        const tcos = Object.keys(urlByTco);
+        if (tcos.length === 1) {
+          const r = urlByTco[tcos[0]];
+          const stripped = text.split(r.display).join("").split(r.expanded).join("").trim();
+          if (!stripped) {
+            link = { title: r.display, url: r.expanded, domain: hostFromUrl(r.expanded), display: r.display };
+            text = "";
+          }
+        }
+      }
 
       const userResult =
         result.core && result.core.user_results && result.core.user_results.result;
@@ -249,7 +332,8 @@
 
       return {
         id: String(restId),
-        text: cleanText(text),
+        text,
+        link,
         authorHandle: screenName,
         authorName: name,
         authorAvatarUrl: avatar,
@@ -644,6 +728,12 @@
         display:flex; align-items:center; justify-content:center; }
       .media .play span::after { content:""; border-style:solid; border-width:11px 0 11px 18px;
         border-color:transparent transparent transparent #fff; margin-left:4px; }
+      .linkcard { display:block; border:1px solid ${t.border}; border-radius:14px;
+        padding:12px 14px; margin:0 0 12px; cursor:pointer; }
+      .linkcard:hover { background:${t.hover}; }
+      .lc-domain { display:block; color:${t.sub}; font-size:13px; margin-bottom:3px; }
+      .lc-title { display:block; font-weight:700; font-size:15px; line-height:1.3;
+        display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; }
       .stats { display:flex; gap:18px; color:${t.sub}; font-size:13px; margin:0 0 12px; flex-wrap:wrap; }
       .stat { display:flex; align-items:center; gap:5px; font-variant-numeric:tabular-nums; }
       .stat svg { width:16px; height:16px; fill:${t.sub}; }
@@ -677,6 +767,17 @@
       const m = bm.media[0];
       const play = m.type !== "photo" ? '<div class="play"><span></span></div>' : "";
       mediaHtml = `<div class="media" data-act="open"><img src="${safe(m.poster)}" alt="">${play}</div>`;
+    }
+
+    const textHtml = bm.text ? `<div class="text">${safe(bm.text)}</div>` : "";
+
+    let linkHtml = "";
+    if (bm.link && (bm.link.title || bm.link.url)) {
+      linkHtml =
+        `<div class="linkcard" data-act="openlink">` +
+        (bm.link.domain ? `<span class="lc-domain">${safe(bm.link.domain)}</span>` : "") +
+        `<span class="lc-title">${safe(bm.link.title || bm.link.url)}</span>` +
+        `</div>`;
     }
 
     const s = bm.stats || {};
@@ -720,8 +821,9 @@
             <span class="handle">${meta}</span>
           </div>
         </div>
-        <div class="text">${safe(bm.text)}</div>
+        ${textHtml}
         ${mediaHtml}
+        ${linkHtml}
         ${statHtml}
         <div class="actions">
           <button class="act read" data-act="read">Read</button>
@@ -914,6 +1016,8 @@
       const bm = currentList[currentIdx];
       if (act === "open") {
         if (bm) window.open(bm.tweetUrl, "_blank", "noopener");
+      } else if (act === "openlink") {
+        if (bm && bm.link && bm.link.url) window.open(bm.link.url, "_blank", "noopener");
       } else if (act === "read") {
         if (!bm) return;
         window.open(bm.tweetUrl, "_blank", "noopener");
